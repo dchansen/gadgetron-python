@@ -14,6 +14,7 @@ from .writers import write_acquisition, write_waveform, write_image
 from ..types.image_array import ImageArray, read_image_array, write_image_array
 from ..types.recon_data import ReconData, read_recon_data, write_recon_data
 from ..types.acquisition_bucket import read_acquisition_bucket
+from ..storage import Storage
 
 
 class Connection:
@@ -161,6 +162,12 @@ class Connection:
 
         return mid, item
 
+    @property
+    def storage(self):
+        """ Access the Gadgetron persistent storage spaces.
+        """
+        return Storage.from_connection(self)
+
     def _read_item(self):
         message_identifier = self._read_message_identifier()
 
@@ -180,9 +187,9 @@ class Connection:
         config_bytes = read_byte_string(self.socket)
 
         try:
-            parsed_config  = xml.fromstring(config_bytes)
+            parsed_config = xml.fromstring(config_bytes)
         except xml.ParseError as e:
-            logging.log(logging.WARN,"Config parsing failed with error message {}".format(e))
+            logging.warning(f"Config parsing failed with error message {e}")
             parsed_config = None 
 
         return parsed_config, config_bytes

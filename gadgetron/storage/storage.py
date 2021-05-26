@@ -1,6 +1,7 @@
 
 import os
-
+import re
+import logging
 import requests
 import urllib.parse as url
 
@@ -8,8 +9,6 @@ import pickle
 
 
 class Storage:
-
-    _default_address = None
 
     default_serializers = {
         'pickle': pickle.dumps
@@ -33,19 +32,15 @@ class Storage:
         self.measurement = MeasurementSpace(self)
 
     @classmethod
-    def set_default_address(cls, address):
-        cls._default_address = address
-
-    @classmethod
     def get_default_address(cls):
-
-        if cls._default_address is not None:
-            return cls._default_address
-
         if os.environ.get('GADGETRON_STORAGE_ADDRESS') is not None:
             return os.environ.get('GADGETRON_STORAGE_ADDRESS')
 
         raise RuntimeError("No storage address provided.")
+
+    @classmethod
+    def from_connection(cls, connection):
+        return Storage(address=_address_from_config(connection.config), **_ids_from_config(connection.config))
 
     def fetch(self, *, space, subject, key, deserializer):
 
@@ -135,10 +130,10 @@ class ErrorSpace:
     def __init__(self, descriptor):
         self.message = f"{descriptor} Storage Space is unavailable - no appropriate id provided."
 
-    def fetch(self, *_):
+    def fetch(self, *_, **__):
         raise RuntimeError(self.message)
 
-    def store(self, *_):
+    def store(self, *_, **__):
         raise RuntimeError(self.message)
 
 
@@ -158,4 +153,20 @@ class Iterable:
     def __len__(self):
         return len(self.blobs)
 
+
+def _address_from_config(config):
+    for elm in config.findall('.//gadgetron/storage/address'):
+        return elm.text
+
+
+def _ids_from_config(config):
+    ids = {}
+
+    for elm in config.findall('.//gadgetron/storage/spaces/scanner'):
+        ids.update(scanner_id=elm.text)
+
+    for elm in config.findall('.//gadgetron/storage/spaces/patient'):
+        ids.update(patient_id=elm.text)
+
+    return ids
 

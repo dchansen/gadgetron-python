@@ -5,6 +5,7 @@ from . import version
 from . import external
 from . import examples
 from . import types
+from . import storage
 
 __version__ = version.version
 

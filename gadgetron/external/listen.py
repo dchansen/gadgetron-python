@@ -13,6 +13,7 @@ def wait_for_client_connection(port):
     sock.bind(('', port))
     sock.listen(0)
     conn, address = sock.accept()
+    sock.close()
 
     logging.info(f"Accepted connection from client: {address}")
 
