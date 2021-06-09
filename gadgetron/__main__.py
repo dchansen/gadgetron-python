@@ -41,8 +41,9 @@ def main(args=None):
     logging.debug(f"Connecting to parent on port {args.get('port')}")
 
     address = ('localhost', int(args.get('port')))
+    storage_address = os.environ.get("GADGETRON_STORAGE_ADDRESS", None)
 
-    with connection.Connection(socket.create_connection(address, 30)) as conn:
+    with connection.Connection(socket.create_connection(address, 30), storage_address) as conn:
         target = load_target(args)
         target(conn)
 

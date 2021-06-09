@@ -1,7 +1,5 @@
 
-import os
 import re
-import logging
 import requests
 import urllib.parse as url
 
@@ -9,6 +7,12 @@ import pickle
 
 
 class Storage:
+    """ Access the Gadgetron Storage Server for persistent data storage.
+
+    Configure storage access by setting the GADGETRON_STORAGE_SERVER environment variable,
+    or by supplying an address when you call `gadgetron.external.listen`. Gadgetron will
+    ensure that the address is configured correctly when it starts external gadgets.
+    """
 
     default_serializers = {
         'pickle': pickle.dumps
@@ -18,10 +22,7 @@ class Storage:
         'pickle': pickle.loads
     }
 
-    def __init__(self, address=None, **ids):
-
-        if address is None:
-            address = self.get_default_address()
+    def __init__(self, address, **ids):
 
         self.address = address
         self.meta_url = url.urljoin(address, '/v1/data')
@@ -30,17 +31,6 @@ class Storage:
         self.scanner = GenericSpace(self, 'scanner', ids.get('scanner_id')) if 'scanner_id' in ids else ErrorSpace('Scanner')
         self.session = GenericSpace(self, 'session', ids.get('session_id')) if 'session_id' in ids else ErrorSpace('Session')
         self.measurement = MeasurementSpace(self)
-
-    @classmethod
-    def get_default_address(cls):
-        if os.environ.get('GADGETRON_STORAGE_ADDRESS') is not None:
-            return os.environ.get('GADGETRON_STORAGE_ADDRESS')
-
-        raise RuntimeError("No storage address provided.")
-
-    @classmethod
-    def from_connection(cls, connection):
-        return Storage(address=_address_from_config(connection.config), **_ids_from_config(connection.config))
 
     def fetch(self, *, space, subject, key, deserializer):
 
@@ -154,19 +144,38 @@ class Iterable:
         return len(self.blobs)
 
 
-def _address_from_config(config):
-    for elm in config.findall('.//gadgetron/storage/address'):
-        return elm.text
+def ids_from_header(header):
 
+    _measurement_id_pattern = re.compile(r"(?P<scanner>.*?)_(?P<patient>.*?)_(?P<study>.*?)_(.*)")
 
-def _ids_from_config(config):
-    ids = {}
+    def parse_measurement_id(key):
+        m = re.match(_measurement_id_pattern, header.measurementInformation.measurementID)
+        if m:
+            return m[key]
 
-    for elm in config.findall('.//gadgetron/storage/spaces/scanner'):
-        ids.update(scanner_id=elm.text)
+    def patient_id():
+        if header.subjectInformation:
+            if header.subjectInformation.patientID:
+                return header.subjectInformation.patientID
+        return parse_measurement_id('patient')
 
-    for elm in config.findall('.//gadgetron/storage/spaces/patient'):
-        ids.update(patient_id=elm.text)
+    def study_id():
+        if header.studyInformation:
+            if header.studyInformation.studyID:
+                return header.studyInformation.studyID
+        return parse_measurement_id('study')
 
-    return ids
+    def session_id():
+        return '/'.join([patient_id(), study_id()])
+
+    def scanner_id():
+        if header.acquisitionSystemInformation:
+            if header.acquisitionSystemInformation.stationName:
+                return header.acquisitionSystemInformation.stationName
+        return parse_measurement_id('scanner')
+
+    return {
+        'session_id': session_id(),
+        'scanner_id': scanner_id()
+    }
 

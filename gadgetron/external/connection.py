@@ -14,7 +14,8 @@ from .writers import write_acquisition, write_waveform, write_image
 from ..types.image_array import ImageArray, read_image_array, write_image_array
 from ..types.recon_data import ReconData, read_recon_data, write_recon_data
 from ..types.acquisition_bucket import read_acquisition_bucket
-from ..storage import Storage
+
+from ..storage import Storage, ids_from_header
 
 
 class Connection:
@@ -45,7 +46,7 @@ class Connection:
         def __init__(self, **fields):
             self.__dict__.update(fields)
 
-    def __init__(self, socket):
+    def __init__(self, socket, storage_address=None):
         self.socket = Connection.SocketWrapper(socket)
 
         self.readers = Connection._default_readers()
@@ -56,6 +57,7 @@ class Connection:
         self.header, self.raw_bytes.header = self._read_header()
 
         self.filters = []
+        self.storage = Storage(storage_address, **ids_from_header(self.header)) if storage_address else None
 
     def __next__(self):
         return self.next()
@@ -161,12 +163,6 @@ class Connection:
             mid, item = self._read_item()
 
         return mid, item
-
-    @property
-    def storage(self):
-        """ Access the Gadgetron persistent storage spaces.
-        """
-        return Storage.from_connection(self)
 
     def _read_item(self):
         message_identifier = self._read_message_identifier()
