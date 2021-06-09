@@ -26,12 +26,11 @@ def noise_adjustment(acquisitions, header):
         return np.sqrt(2 * acq.sample_time_us * noise_bandwidth / noise_dwell_time)
 
     def calculate_whitening_transformation(noise):
-        noise = np.asmatrix(noise)
-        covariance = (1.0 / (noise.shape[1] - 1)) * (noise * noise.H)
+        covariance = (1.0 / (noise.shape[1] - 1)) * np.dot(noise, np.transpose(np.conjugate(noise)))
         return np.linalg.inv(np.linalg.cholesky(covariance))
 
     def apply_whitening_transformation(acq):
-        return np.asarray(scaling_factor(acq) * noise_matrix * np.asmatrix(acq.data))
+        return scaling_factor(acq) * np.dot(noise_matrix, acq.data)
 
     def noise_adjust(acq):
         if noise_matrix is not None:
@@ -87,15 +86,15 @@ def accumulate_acquisitions(acquisitions, header):
         number_of_samples = acqs[0].data.shape[1]
 
         buffer = np.zeros(
-            (number_of_channels,
-             number_of_samples,
+            (matrix_size.z,
              matrix_size.y,
-             matrix_size.z),
+             number_of_samples,
+             number_of_channels),
             dtype=np.complex64
         )
 
         for acq in acqs:
-            buffer[:, :, acq.idx.kspace_encode_step_1, acq.idx.kspace_encode_step_2] = acq.data
+            buffer[acq.idx.kspace_encode_step_2, acq.idx.kspace_encode_step_1, :, :] = np.transpose(acq.data)
 
         return buffer
 
@@ -111,18 +110,19 @@ def reconstruct_images(buffers):
     def reconstruct_image(kspace_data):
         # Reconstruction is an inverse fft in this case.
 
-        return cifftn(kspace_data, axes=[1, 2, 3])
+        return cifftn(kspace_data, axes=[0, 1, 2])
 
     def combine_channels(image_data):
         # The buffer contains complex images, one for each channel. We combine these into a single image
         # through a sum of squares along the channels (axis 0).
 
-        return np.sqrt(np.sum(np.square(np.abs(image_data)), axis=0))
+        return np.sqrt(np.sum(np.square(np.abs(image_data)), axis=3))
 
     for reference, data in buffers:
         yield ismrmrd.image.Image.from_array(
             combine_channels(reconstruct_image(data)),
-            acquisition=reference
+            acquisition=reference,
+            transpose=False  # Squelch deprecation warning; we are in line with future behaviour.
         )
 
 
