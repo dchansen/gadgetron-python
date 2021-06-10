@@ -4,7 +4,8 @@ import requests
 import urllib.parse as url
 
 import pickle
-
+import datetime
+from typing import Union
 
 class Storage:
     """ Access the Gadgetron Storage Server for persistent data storage.
@@ -47,7 +48,7 @@ class Storage:
 
         return Iterable(self, deserializer, response.json())
 
-    def store(self, *, space, subject, key, value, serializer):
+    def store(self, *, space, subject, key, value, serializer, storage_duration=datetime.timedelta(hours=48)):
 
         serializer = self.default_serializers.get(serializer, serializer)
 
@@ -55,7 +56,7 @@ class Storage:
             'storagespace': space,
             'subject': subject,
             'key': key,
-            'storage_duration': '48:00:00'  # 48 hours
+            'storage_duration': duration_to_string(storage_duration)
         }
 
         response = requests.post(self.meta_url, json=data)
@@ -82,13 +83,14 @@ class GenericSpace:
             deserializer=deserializer
         )
 
-    def store(self, key, value, *, serializer):
+    def store(self, key, value, *, serializer, storage_duration=datetime.timedelta(hours=48)):
         return self.storage.store(
             space=self.space,
             subject=self.subject,
             key=key,
             value=value,
-            serializer=serializer
+            serializer=serializer,
+            storage_duration=storage_duration
         )
 
 
@@ -105,13 +107,14 @@ class MeasurementSpace:
             deserializer=deserializer
         )
 
-    def store(self, measurement_id, key, value, *, serializer):
+    def store(self, measurement_id, key, value, *, serializer, storage_duration=datetime.timedelta(hours=48)):
         return self.storage.store(
             space='measurement',
             subject=measurement_id,
             key=key,
             value=value,
-            serializer=serializer
+            serializer=serializer,
+            storage_duration=storage_duration
         )
 
 
@@ -178,4 +181,19 @@ def ids_from_header(header):
         'session_id': session_id(),
         'scanner_id': scanner_id()
     }
+
+
+def duration_to_string(duration: Union[datetime.timedelta,float] ):
+    if type(duration) is not  datetime.timedelta:
+        duration = datetime.timedelta(seconds=duration)
+
+    hours = duration.days*24+ duration.seconds//(60*60)
+    remaining_seconds = duration.seconds - (duration.seconds//(60*60))*60*60
+    minutes = remaining_seconds//(60)
+    seconds = float(remaining_seconds -  minutes*60) + duration.microseconds*1e-6
+
+    return f"{hours}:{minutes}:{seconds}"
+       
+
+
 
