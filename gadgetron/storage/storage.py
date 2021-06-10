@@ -7,6 +7,7 @@ import pickle
 import datetime
 from typing import Union
 
+
 class Storage:
     """ Access the Gadgetron Storage Server for persistent data storage.
 
@@ -48,7 +49,7 @@ class Storage:
 
         return Iterable(self, deserializer, response.json())
 
-    def store(self, *, space, subject, key, value, serializer, storage_duration=datetime.timedelta(hours=48)):
+    def store(self, *, space, subject, key, value, serializer, storage_duration):
 
         serializer = self.default_serializers.get(serializer, serializer)
 
@@ -183,17 +184,11 @@ def ids_from_header(header):
     }
 
 
-def duration_to_string(duration: Union[datetime.timedelta,float] ):
-    if type(duration) is not  datetime.timedelta:
-        duration = datetime.timedelta(seconds=duration)
+def duration_to_string(duration: Union[datetime.timedelta, int, float]):
 
-    hours = duration.days*24+ duration.seconds//(60*60)
-    remaining_seconds = duration.seconds - (duration.seconds//(60*60))*60*60
-    minutes = remaining_seconds//(60)
-    seconds = float(remaining_seconds -  minutes*60) + duration.microseconds*1e-6
+    total_seconds = int(duration.total_seconds() if isinstance(duration, datetime.timedelta) else duration)
 
-    return f"{hours}:{minutes}:{seconds}"
-       
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
 
-
-
+    return f"{hours}:{minutes:02}:{seconds:02}"
