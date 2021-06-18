@@ -1,4 +1,3 @@
-
 import socket
 import logging
 
@@ -8,14 +7,14 @@ import ismrmrd
 
 from . import constants
 
-from .readers import read, read_byte_string, read_acquisition, read_waveform, read_image
-from .writers import write_acquisition, write_waveform, write_image
+from .readers import read, read_byte_string
 
-from ..types.image_array import ImageArray, read_image_array, write_image_array
-from ..types.recon_data import ReconData, read_recon_data, write_recon_data
-from ..types.acquisition_bucket import read_acquisition_bucket
+from ..types.image_array import ImageArray
+from ..types.recon_data import ReconData
+from ..types.acquisition_bucket import AcquisitionBucket
 
 from ..storage import Storage, ids_from_header
+from ..types.serialization import message_reader, message_writer
 
 
 class Connection:
@@ -31,7 +30,7 @@ class Connection:
         def read(self, nbytes):
             bytes = self.socket.recv(nbytes, socket.MSG_WAITALL)
             while len(bytes) < nbytes:
-                bytes += self.socket.recv(nbytes - len(bytes),socket.MSG_WAITALL)
+                bytes += self.socket.recv(nbytes - len(bytes), socket.MSG_WAITALL)
             return bytes
 
         def write(self, byte_array):
@@ -179,47 +178,49 @@ class Connection:
 
     def _read_config(self):
         message_identifier = self._read_message_identifier()
-        assert(message_identifier == constants.GADGET_MESSAGE_CONFIG)
+        assert (message_identifier == constants.GADGET_MESSAGE_CONFIG)
         config_bytes = read_byte_string(self.socket)
 
         try:
             parsed_config = xml.fromstring(config_bytes)
         except xml.ParseError as e:
             logging.warning(f"Config parsing failed with error message {e}")
-            parsed_config = None 
+            parsed_config = None
 
         return parsed_config, config_bytes
 
     def _read_header(self):
         message_identifier = self._read_message_identifier()
-        assert(message_identifier == constants.GADGET_MESSAGE_HEADER)
+        assert (message_identifier == constants.GADGET_MESSAGE_HEADER)
         header_bytes = read_byte_string(self.socket)
         return ismrmrd.xsd.CreateFromDocument(header_bytes), header_bytes
 
-    @ staticmethod
+    @staticmethod
     def _default_readers():
         return {
             constants.GADGET_MESSAGE_CLOSE: Connection.stop_iteration,
-            constants.GADGET_MESSAGE_ISMRMRD_ACQUISITION: read_acquisition,
-            constants.GADGET_MESSAGE_ISMRMRD_WAVEFORM: read_waveform,
-            constants.GADGET_MESSAGE_ISMRMRD_IMAGE: read_image,
-            constants.GADGET_MESSAGE_IMAGE_ARRAY: read_image_array,
-            constants.GADGET_MESSAGE_RECON_DATA: read_recon_data,
-            constants.GADGET_MESSAGE_BUCKET: read_acquisition_bucket
+            constants.GADGET_MESSAGE_ISMRMRD_ACQUISITION: message_reader(ismrmrd.Acquisition),
+            constants.GADGET_MESSAGE_ISMRMRD_WAVEFORM: message_reader(ismrmrd.Waveform),
+            constants.GADGET_MESSAGE_ISMRMRD_IMAGE: message_reader(ismrmrd.Image),
+            constants.GADGET_MESSAGE_IMAGE_ARRAY: message_reader(ImageArray),
+            constants.GADGET_MESSAGE_RECON_DATA: message_reader(ReconData),
+            constants.GADGET_MESSAGE_BUCKET: message_reader(AcquisitionBucket)
         }
 
-    @ staticmethod
+    @staticmethod
     def _default_writers():
+        def create_writer(message_id, obj_type):
+            return lambda item: isinstance(item, obj_type), message_writer(message_id, obj_type)
+
         return [
-            (lambda item: isinstance(item, ismrmrd.Acquisition), write_acquisition),
-            (lambda item: isinstance(item, ismrmrd.Waveform), write_waveform),
-            (lambda item: isinstance(item, ismrmrd.Image), write_image),
-            (lambda item: isinstance(item, ImageArray), write_image_array),
-            (lambda item: isinstance(item, ReconData), write_recon_data)
+            create_writer(constants.GADGET_MESSAGE_ISMRMRD_ACQUISITION, ismrmrd.Acquisition),
+            create_writer(constants.GADGET_MESSAGE_ISMRMRD_WAVEFORM, ismrmrd.Waveform),
+            create_writer(constants.GADGET_MESSAGE_ISMRMRD_IMAGE, ismrmrd.Image),
+            create_writer(constants.GADGET_MESSAGE_IMAGE_ARRAY, ImageArray),
+            create_writer(constants.GADGET_MESSAGE_RECON_DATA, ReconData)
         ]
 
-    @ staticmethod
+    @staticmethod
     def stop_iteration(_):
         logging.debug("Connection closed normally.")
         raise StopIteration()
-
